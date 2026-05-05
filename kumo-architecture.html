@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kumo Analyst — Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #0d0d0d; --bg2: #141414; --bg3: #1a1a1a;
+  --border: #2a2a2a; --border2: #333;
+  --text: #e0e0e0; --muted: #555; --muted2: #444;
+  --green: #22c55e; --blue: #3b82f6; --purple: #a855f7;
+  --orange: #f97316; --red: #ef4444; --yellow: #eab308;
+  --cyan: #06b6d4;
+}
+body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans', sans-serif; height: 100vh; overflow: hidden; user-select: none; }
+body::before { content: ''; position: fixed; inset: 0; background-image: radial-gradient(circle, #2a2a2a 1px, transparent 1px); background-size: 28px 28px; opacity: 0.4; pointer-events: none; z-index: 0; }
+
+/* Topbar */
+.topbar { position: fixed; top: 0; left: 0; right: 0; height: 48px; background: var(--bg2); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; z-index: 100; }
+.topbar-logo { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+.topbar-badge { font-size: 9px; padding: 2px 8px; border-radius: 3px; background: #1a1a1a; border: 1px solid var(--border2); color: var(--muted); letter-spacing: 1px; text-transform: uppercase; font-family: 'IBM Plex Mono', monospace; }
+.topbar-right { display: flex; align-items: center; gap: 20px; font-size: 10px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+.live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 5px; animation: blink 2s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* Canvas */
+#canvas { position: fixed; top: 48px; left: 0; right: 0; bottom: 0; z-index: 1; overflow: hidden; cursor: grab; }
+#canvas.panning { cursor: grabbing; }
+#world { position: absolute; width: 4000px; height: 3000px; transform-origin: 0 0; }
+#svg-layer { position: absolute; top: 0; left: 0; width: 4000px; height: 3000px; pointer-events: none; }
+
+/* Group labels */
+.group-label { position: absolute; font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 2.5px; color: #2a2a2a; pointer-events: none; z-index: 2; }
+.group-bg { position: absolute; border-radius: 14px; border: 1px dashed #1e1e1e; background: rgba(255,255,255,0.005); pointer-events: none; z-index: 2; }
+
+/* Nodes */
+.node { position: absolute; width: 190px; background: var(--bg2); border: 1px solid var(--border2); border-radius: 8px; cursor: grab; z-index: 10; transition: border-color 0.15s, box-shadow 0.15s; }
+.node:hover { border-color: var(--accent-color, #444); box-shadow: 0 0 0 1px var(--accent-color, #444), 0 8px 24px rgba(0,0,0,.5); }
+.node.active { border-color: var(--accent-color, #444) !important; box-shadow: 0 0 0 2px var(--accent-color, #444), 0 12px 32px rgba(0,0,0,.6) !important; }
+.node.dragging { cursor: grabbing; z-index: 100; box-shadow: 0 20px 60px rgba(0,0,0,.8); transform: scale(1.02); }
+.node-header { padding: 10px 12px 8px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
+.node-icon { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+.node-title { font-size: 11px; font-weight: 600; color: var(--text); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.node-sub { padding: 5px 12px 8px; font-size: 9px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+.port { position: absolute; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #333; background: #1a1a1a; top: 50%; transform: translateY(-50%); transition: all .15s; z-index: 11; }
+.port-out { right: -5px; }
+.port-in { left: -5px; }
+.node:hover .port { border-color: var(--accent-color, #555); background: var(--accent-color, #555); }
+
+/* Panel */
+#panel { position: fixed; right: -390px; top: 48px; bottom: 0; width: 370px; background: var(--bg2); border-left: 1px solid var(--border); z-index: 50; transition: right .3s cubic-bezier(.4,0,.2,1); display: flex; flex-direction: column; }
+#panel.open { right: 0; }
+.panel-header { padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.panel-icon { width: 38px; height: 38px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.panel-title { font-size: 13px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; color: var(--text); margin-bottom: 3px; }
+.panel-type { font-size: 9px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: 1px; }
+.panel-close { background: none; border: 1px solid var(--border); color: var(--muted); width: 28px; height: 28px; border-radius: 5px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all .15s; }
+.panel-close:hover { border-color: var(--border2); color: var(--text); }
+.panel-body { flex: 1; overflow-y: auto; padding: 16px 18px; }
+.panel-body::-webkit-scrollbar { width: 3px; }
+.panel-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+.panel-section { margin-bottom: 18px; }
+.panel-section-title { font-size: 9px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; font-family: 'IBM Plex Mono', monospace; }
+.panel-desc { font-size: 12px; color: #999; line-height: 1.75; }
+.panel-tag { display: inline-flex; padding: 2px 9px; border-radius: 3px; font-size: 9px; font-family: 'IBM Plex Mono', monospace; font-weight: 600; margin: 2px; border: 1px solid transparent; letter-spacing: .5px; }
+.panel-field { background: var(--bg3); border: 1px solid var(--border); border-radius: 5px; padding: 8px 10px; margin-bottom: 6px; }
+.panel-field-label { font-size: 8px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; }
+.panel-field-value { font-size: 11px; color: var(--text); font-family: 'IBM Plex Mono', monospace; word-break: break-all; line-height: 1.5; }
+.panel-field-value.hi { color: var(--cyan); }
+.panel-flow { display: flex; flex-direction: column; gap: 3px; }
+.panel-flow-step { display: flex; align-items: center; gap: 8px; padding: 6px 9px; background: var(--bg3); border-radius: 4px; border: 1px solid var(--border); font-size: 10px; font-family: 'IBM Plex Mono', monospace; color: #999; }
+.panel-flow-num { width: 16px; height: 16px; border-radius: 50%; background: var(--border2); display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700; color: var(--muted); flex-shrink: 0; }
+.tag-green { background: #16a34a18; color: var(--green); border-color: #16a34a35; }
+.tag-blue { background: #2563eb18; color: var(--blue); border-color: #2563eb35; }
+.tag-purple { background: #9333ea18; color: var(--purple); border-color: #9333ea35; }
+.tag-orange { background: #ea580c18; color: var(--orange); border-color: #ea580c35; }
+.tag-red { background: #dc262618; color: var(--red); border-color: #dc262635; }
+.tag-yellow { background: #ca8a0418; color: var(--yellow); border-color: #ca8a0435; }
+.tag-cyan { background: #0891b218; color: var(--cyan); border-color: #0891b235; }
+
+/* Controls */
+#controls { position: fixed; bottom: 20px; left: 20px; display: flex; gap: 4px; z-index: 50; }
+.ctrl-btn { background: var(--bg2); border: 1px solid var(--border); color: var(--muted); width: 32px; height: 32px; border-radius: 5px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all .15s; font-family: 'IBM Plex Mono', monospace; }
+.ctrl-btn:hover { border-color: var(--border2); color: var(--text); }
+#zoom-label { background: var(--bg2); border: 1px solid var(--border); color: var(--muted); height: 32px; padding: 0 10px; border-radius: 5px; display: flex; align-items: center; font-size: 10px; font-family: 'IBM Plex Mono', monospace; }
+
+/* Legend */
+#legend { position: fixed; bottom: 20px; right: 20px; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; z-index: 50; }
+.legend-item { display: flex; align-items: center; gap: 8px; font-size: 9px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+.legend-item:last-child { margin-bottom: 0; }
+.legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+/* Tooltip */
+#tooltip { position: fixed; background: var(--bg2); border: 1px solid var(--border2); border-radius: 4px; padding: 5px 10px; font-size: 10px; font-family: 'IBM Plex Mono', monospace; color: var(--text); pointer-events: none; z-index: 200; opacity: 0; transition: opacity .1s; white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo">
+    📡 KUMO ANALYST
+    <div class="topbar-badge">Architecture v2.0</div>
+  </div>
+  <div class="topbar-right">
+    <span><span class="live-dot"></span>Bot actif — Wispbyte 24/7</span>
+    <span>7 APIs</span>
+    <span>4 Salons Discord</span>
+    <span>5 Automatisations</span>
+    <span style="color:#333">|</span>
+    <span style="color:#444;font-size:9px">Glisser les nœuds • Cliquer pour détails • Scroll pour zoomer</span>
+  </div>
+</div>
+
+<div id="canvas">
+  <div id="world">
+    <svg id="svg-layer"></svg>
+  </div>
+</div>
+
+<div id="panel">
+  <div class="panel-header">
+    <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">
+      <div class="panel-icon" id="panel-icon"></div>
+      <div style="min-width:0">
+        <div class="panel-title" id="panel-title"></div>
+        <div class="panel-type" id="panel-type"></div>
+      </div>
+    </div>
+    <button class="panel-close" onclick="closePanel()">✕</button>
+  </div>
+  <div class="panel-body" id="panel-body"></div>
+</div>
+
+<div id="controls">
+  <button class="ctrl-btn" onclick="zoomIn()" title="Zoom +">+</button>
+  <button class="ctrl-btn" onclick="zoomOut()" title="Zoom -">−</button>
+  <div id="zoom-label">100%</div>
+  <button class="ctrl-btn" onclick="resetView()" title="Reset vue">⌂</button>
+</div>
+
+<div id="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>Planification CRON</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div>API Externe</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div>Intelligence IA</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Discord</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div>Dashboard Web</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#6b7280"></div>Infrastructure</div>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+// ─────────────────────────────────────────────
+// NODES — Ordonné de gauche à droite :
+// Col 1 (x=60)   : Infrastructure (Wispbyte)
+// Col 2 (x=320)  : Déclencheurs (CRON + Menu)
+// Col 3 (x=600)  : APIs
+// Col 4 (x=880)  : Traitement IA
+// Col 5 (x=1150) : Canaux Discord
+// Col 6 (x=1430) : Dashboard Web
+// ─────────────────────────────────────────────
+const nodes = [
+  // ── COL 1 : INFRASTRUCTURE ──
+  {
+    id: 'wispbyte', x: 60, y: 380,
+    title: 'Wispbyte', sub: 'Hébergement 24/7',
+    icon: '☁️', color: '#6b7280', type: 'Infrastructure — Cloud',
+    desc: 'Serveur cloud gratuit qui exécute le bot Node.js en permanence, 24h/24 7j/7. Charge les variables d\'environnement depuis le fichier .env et démarre tous les planificateurs CRON au démarrage.',
+    fields: [
+      { label: 'Runtime', value: 'Node.js 19' },
+      { label: 'Fichier principal', value: 'index.js' },
+      { label: 'Disponibilité', value: '24h/24 — 7j/7' },
+      { label: 'Prix', value: '100% gratuit' },
+      { label: 'Variables .env', value: 'DISCORD_TOKEN, ANTHROPIC_KEY, TWELVEDATA_KEY, NEWS_API_KEY, CHANNEL_ID, NEWS_CHANNEL_ID, ANALYSE_CHANNEL_ID' },
+    ],
+    tags: [{ l: 'NODE.JS', c: 'tag-green' }, { l: 'CLOUD', c: 'tag-blue' }, { l: 'GRATUIT', c: 'tag-cyan' }],
+    flow: ['Démarrage : node index.js', 'Charge .env (clés API)', 'Connexion Discord Gateway', 'Enregistrement commande /clear', 'Initialisation crons planifiés', 'Écoute interactions Discord en temps réel']
+  },
+
+  // ── COL 2 : DÉCLENCHEURS ──
+  {
+    id: 'cron_9h', x: 320, y: 80,
+    title: 'CRON 9h00', sub: 'Analyse quotidienne',
+    icon: '⏰', color: '#f97316', type: 'Déclencheur — Planifié',
+    desc: 'Déclenche automatiquement l\'analyse complète du marché chaque matin de la semaine à 9h00 (heure de Paris). Lance le résumé marché puis analyse les 7 actions.',
+    fields: [
+      { label: 'Expression CRON', value: '0 9 * * 1-5' },
+      { label: 'Timezone', value: 'Europe/Paris' },
+      { label: 'Jours actifs', value: 'Lundi → Vendredi' },
+      { label: 'Canal résultat', value: '#kumo-analyse' },
+    ],
+    tags: [{ l: 'CRON', c: 'tag-orange' }, { l: 'AUTO', c: 'tag-orange' }],
+    flow: ['9h00 → lance analyseQuotidienne()', 'Résumé marché SPY/QQQ/VIX', 'Boucle sur 7 tickers', 'Analyse IA + news par ticker', 'Comparaison & classement final']
+  },
+  {
+    id: 'cron_8h', x: 320, y: 210,
+    title: 'CRON 8h00', sub: 'News du matin',
+    icon: '📰', color: '#f97316', type: 'Déclencheur — Planifié',
+    desc: 'Lance la collecte et l\'analyse des actualités financières chaque matin à 8h, avant l\'ouverture des marchés européens.',
+    fields: [
+      { label: 'Expression CRON', value: '0 8 * * 1-5' },
+      { label: 'Timezone', value: 'Europe/Paris' },
+      { label: 'Canal résultat', value: '#kumo-news' },
+    ],
+    tags: [{ l: 'CRON', c: 'tag-orange' }, { l: 'NEWS', c: 'tag-blue' }],
+    flow: ['8h00 → lance posterNewsQuotidien()', 'NewsAPI → 3 articles/ticker', 'Claude → analyse sentiment', 'Embed coloré dans #kumo-news']
+  },
+  {
+    id: 'cron_4h', x: 320, y: 340,
+    title: 'CRON /4h', sub: 'Alertes RSI',
+    icon: '🚨', color: '#ef4444', type: 'Déclencheur — Planifié',
+    desc: 'Vérifie le RSI de chaque action toutes les 4 heures. Envoie une alerte Discord si une action entre en zone de surachat (RSI > 70) ou de survente (RSI < 30).',
+    fields: [
+      { label: 'Expression CRON', value: '0 */4 * * *' },
+      { label: 'Seuil surachat', value: 'RSI > 70 → 🔴 Alerte' },
+      { label: 'Seuil survente', value: 'RSI < 30 → 🟢 Alerte' },
+      { label: 'Canal résultat', value: '#trading-signals' },
+    ],
+    tags: [{ l: 'ALERTE', c: 'tag-red' }, { l: 'RSI', c: 'tag-blue' }],
+    flow: ['Toutes les 4h → verifierAlertes()', 'Fetch RSI Twelve Data par ticker', 'Comparaison seuils 70/30', 'Si hors zone → embed alerte Discord', 'Sinon → silencieux']
+  },
+  {
+    id: 'cron_hebdo', x: 320, y: 480,
+    title: 'CRON Lundi 8h30', sub: 'Rapport hebdo',
+    icon: '📋', color: '#eab308', type: 'Déclencheur — Planifié',
+    desc: 'Génère et envoie un rapport de synthèse hebdomadaire chaque lundi matin avec les dernières recommandations et scores de chaque action suivie.',
+    fields: [
+      { label: 'Expression CRON', value: '30 8 * * 1' },
+      { label: 'Canal résultat', value: '#kumo-analyse' },
+      { label: 'Source données', value: 'Historique local en mémoire' },
+    ],
+    tags: [{ l: 'HEBDO', c: 'tag-yellow' }, { l: 'RAPPORT', c: 'tag-yellow' }],
+    flow: ['Lundi 8h30 → rapportHebdomadaire()', 'Lecture historique mémoire locale', 'Format : ticker + reco + prix + score', 'Embed violet dans #kumo-analyse']
+  },
+  {
+    id: 'discord_menu', x: 320, y: 620,
+    title: 'Menu Discord', sub: '#trading-signals',
+    icon: '🎛️', color: '#22c55e', type: 'Déclencheur — Interactif',
+    desc: 'Interface principale du bot. Menu déroulant et boutons permanents dans #trading-signals. Toutes les interactions utilisateur passent par ici.',
+    fields: [
+      { label: 'Canal', value: '#trading-signals' },
+      { label: 'Composants', value: 'StringSelectMenu + 5 boutons' },
+      { label: 'Boutons', value: '📰 News | 🏆 Comparer | 🔍 Libre | ➕ Ajouter | ➖ Supprimer | 🌐 Dashboard' },
+      { label: 'Commande', value: '/clear — Nettoyage salon' },
+    ],
+    tags: [{ l: 'DISCORD', c: 'tag-green' }, { l: 'INTERACTIF', c: 'tag-green' }],
+    flow: ['Sélection ticker → analyse complète', 'Bouton 📰 → actualités maintenant', 'Bouton 🏆 → comparaison 7 actions', 'Bouton 🔍 → modal ticker libre', 'Bouton 🌐 → lien GitHub Pages', 'Bouton ➕ → modal ajout ticker', 'Bouton ➖ → menu suppression', '/clear → bulkDelete 100 messages']
+  },
+
+  // ── COL 3 : APIs ──
+  {
+    id: 'twelvedata', x: 620, y: 200,
+    title: 'Twelve Data', sub: 'Données marché (Bot)',
+    icon: '📊', color: '#3b82f6', type: 'API Externe — Données marché',
+    desc: 'Source de données marché pour le bot Discord. Fournit les prix OHLCV, le RSI sur 14 périodes, le MACD et les données hebdomadaires sur 52 semaines.',
+    fields: [
+      { label: 'URL', value: 'api.twelvedata.com' },
+      { label: 'Plan', value: 'Gratuit — 8 req/min' },
+      { label: 'Endpoints utilisés', value: 'time_series, rsi, macd, quote' },
+      { label: 'Intervalle', value: '1day' },
+    ],
+    tags: [{ l: 'REST API', c: 'tag-blue' }, { l: 'GRATUIT', c: 'tag-green' }],
+    flow: ['time_series → OHLCV 7 jours', 'rsi → RSI 14 périodes', 'macd → MACD / Signal / Histogramme', 'quote → données live SPY/QQQ/VIX', 'time_series 1week → 52 semaines haut/bas']
+  },
+  {
+    id: 'newsapi', x: 620, y: 430,
+    title: 'NewsAPI', sub: 'Actualités financières',
+    icon: '🗞️', color: '#3b82f6', type: 'API Externe — Actualités',
+    desc: 'Collecte les 3 à 5 dernières actualités en français pour chaque action. Les titres sont transmis à Claude pour une analyse de sentiment.',
+    fields: [
+      { label: 'URL', value: 'newsapi.org/v2/everything' },
+      { label: 'Langue', value: 'fr (français)' },
+      { label: 'Articles / action', value: '3 (news salon) / 5 (analyse)' },
+      { label: 'Tri', value: 'publishedAt — plus récent en premier' },
+    ],
+    tags: [{ l: 'REST API', c: 'tag-blue' }, { l: 'GRATUIT', c: 'tag-green' }],
+    flow: ['Requête par nom société (Apple, Nvidia...)', 'Filtre langue FR', 'Retourne titres + URLs', 'Transmis à Claude pour sentiment']
+  },
+  {
+    id: 'yahoo', x: 620, y: 650,
+    title: 'Yahoo Finance', sub: 'Dashboard web uniquement',
+    icon: '📈', color: '#06b6d4', type: 'API Externe — Dashboard Web',
+    desc: 'Utilisée exclusivement par la page GitHub Pages. Aucune clé API requise, aucune limite de requêtes. Les données sont récupérées via un proxy CORS public.',
+    fields: [
+      { label: 'URL', value: 'query1.finance.yahoo.com/v8/finance/chart' },
+      { label: 'Proxy CORS', value: 'corsproxy.io' },
+      { label: 'Clé API', value: 'Aucune — 100% public' },
+      { label: 'Période', value: '3 mois — intervalle 1day' },
+    ],
+    tags: [{ l: 'NO API KEY', c: 'tag-cyan' }, { l: 'WEB ONLY', c: 'tag-cyan' }],
+    flow: ['Fetch via corsproxy.io (contourne CORS)', 'OHLCV 90 jours par action', 'RSI calculé en JavaScript local', 'MACD calculé en JavaScript local', 'Sparkline 30 jours → SVG généré', 'S&P500 + Nasdaq + VIX + Or + BTC']
+  },
+
+  // ── COL 4 : IA ──
+  {
+    id: 'anthropic', x: 900, y: 300,
+    title: 'Claude API', sub: 'Analyse & Sentiment',
+    icon: '🧠', color: '#a855f7', type: 'IA — Anthropic Claude',
+    desc: 'Le cerveau analytique du bot. Claude combine les indicateurs techniques (RSI, MACD, prix) avec les actualités pour produire une recommandation structurée en JSON avec Stop Loss et Take Profit.',
+    fields: [
+      { label: 'Modèle', value: 'claude-sonnet-4-6' },
+      { label: 'Endpoint', value: 'api.anthropic.com/v1/messages' },
+      { label: 'Max tokens analyse', value: '500' },
+      { label: 'Max tokens news', value: '200' },
+      { label: 'Format sortie', value: 'JSON strict — analyse, recommandation, emoji, sl, tp1, tp2, sentiment' },
+    ],
+    tags: [{ l: 'LLM', c: 'tag-purple' }, { l: 'JSON', c: 'tag-blue' }, { l: 'claude-sonnet-4-6', c: 'tag-purple' }],
+    flow: ['Reçoit : RSI, MACD, prix, variation, 52s haut/bas', 'Reçoit : titres actualités récentes', 'Analyse technique + sentiment combinés', 'Retourne JSON : analyse (2 phrases max)', 'Recommandation ENTRER | ATTENDRE | EVITER', 'Sentiment Positif | Neutre | Négatif', 'SL, TP1, TP2 calculés automatiquement']
+  },
+
+  // ── COL 5 : CANAUX DISCORD ──
+  {
+    id: 'ch_signals', x: 1180, y: 100,
+    title: '#trading-signals', sub: 'Interface & Alertes',
+    icon: '🎛️', color: '#22c55e', type: 'Canal Discord — Interface principale',
+    desc: 'Le hub central de Kumo Analyst. Contient le menu interactif permanent et reçoit les alertes RSI automatiques toutes les 4h.',
+    fields: [
+      { label: 'Contenu permanent', value: 'Menu déroulant + 6 boutons' },
+      { label: 'Alertes RSI', value: 'Toutes les 4h si RSI hors zone' },
+      { label: 'Résumé marché', value: 'Chaque matin à 9h (SPY/QQQ/VIX)' },
+    ],
+    tags: [{ l: 'INTERFACE', c: 'tag-green' }, { l: 'ALERTES', c: 'tag-red' }],
+    flow: ['Menu déroulant 7 tickers', '6 boutons d\'action', 'Alertes 🔴 surachat / 🟢 survente RSI', 'Résumé marché quotidien 9h', '/clear pour nettoyer le salon']
+  },
+  {
+    id: 'ch_analyse', x: 1180, y: 340,
+    title: '#kumo-analyse', sub: 'Analyses & Classement',
+    icon: '📊', color: '#22c55e', type: 'Canal Discord — Analyses',
+    desc: 'Reçoit toutes les analyses détaillées par action : score IA, recommandation colorée, SL/TP, RSI, MACD, tendance 7 jours, sentiment et historique des 5 derniers passages. Aussi le classement quotidien et le rapport hebdo.',
+    fields: [
+      { label: 'Analyse par action', value: 'Score + Prix + RSI + MACD + SL/TP + Sentiment + Historique' },
+      { label: 'Couleur embed', value: '🟢 #00ff88 ENTRER | 🟡 #ffcc00 ATTENDRE | 🔴 #ff4444 EVITER' },
+      { label: 'Bouton inline', value: '🔄 Rafraîchir — met à jour l\'analyse' },
+      { label: 'Classement', value: '🏆 7 actions triées par score IA' },
+    ],
+    tags: [{ l: 'ANALYSES', c: 'tag-green' }, { l: 'CLASSEMENT', c: 'tag-yellow' }, { l: 'RAPPORT', c: 'tag-yellow' }],
+    flow: ['Embed coloré par recommandation', 'Score IA /10 avec barre visuelle', 'SL + TP1 + TP2 par Claude', 'Sparkline 7 jours ASCII', 'Sentiment news intégré', 'Historique 5 derniers passages', '🏆 Classement automatique après analyse', '📋 Rapport hebdo lundi 8h30']
+  },
+  {
+    id: 'ch_news', x: 1180, y: 600,
+    title: '#kumo-news', sub: 'Actualités & Sentiment',
+    icon: '📰', color: '#22c55e', type: 'Canal Discord — Actualités',
+    desc: 'Reçoit chaque matin à 8h les actualités analysées par Claude. Affiche le sentiment par action avec les 3 articles les plus récents et leurs liens.',
+    fields: [
+      { label: 'Heure d\'envoi', value: '8h00 lun–ven automatique' },
+      { label: 'Articles par action', value: '3 avec liens cliquables' },
+      { label: 'Couleur embed', value: '🟢 Positif | 🟡 Neutre | 🔴 Négatif' },
+    ],
+    tags: [{ l: 'NEWS', c: 'tag-blue' }, { l: 'SENTIMENT IA', c: 'tag-purple' }],
+    flow: ['8h00 → 7 actions traitées en séquence', 'NewsAPI → 3 articles par ticker', 'Claude → sentiment en JSON', 'Embed coloré + résumé 1 phrase', 'Liens articles cliquables', 'Bouton 📰 disponible manuellement']
+  },
+
+  // ── COL 6 : DASHBOARD ──
+  {
+    id: 'dashboard', x: 1460, y: 360,
+    title: 'Dashboard Web', sub: 'GitHub Pages',
+    icon: '🌐', color: '#06b6d4', type: 'Interface Web — GitHub Pages',
+    desc: 'Page web interactive hébergée gratuitement sur GitHub Pages. Design sombre inspiré de Google Finance. Cartes par action avec graphique sparkline SVG, RSI, MACD, score IA, statut marché et heure ouverture/fermeture.',
+    fields: [
+      { label: 'URL', value: 'sayviou.github.io/kumo-dashboard', hi: true },
+      { label: 'Hébergement', value: 'GitHub Pages — 100% gratuit' },
+      { label: 'Actualisation', value: 'Auto toutes les 15 min' },
+      { label: 'Source données', value: 'Yahoo Finance via corsproxy.io' },
+      { label: 'Accès Discord', value: 'Bouton 🌐 dans #trading-signals' },
+    ],
+    tags: [{ l: 'WEB', c: 'tag-cyan' }, { l: 'GRATUIT', c: 'tag-green' }, { l: 'RESPONSIVE', c: 'tag-blue' }],
+    flow: ['Charge 7 actions en parallèle', 'Yahoo Finance → OHLCV 3 mois', 'RSI 14p calculé localement (JS)', 'MACD calculé localement (JS)', 'Score IA calculé localement', 'Sparkline 30j → SVG dynamique', 'Barre marché : S&P500, Nasdaq, VIX, Or, BTC', 'Lien TradingView par action', 'Bouton Actualiser manuel']
+  },
+];
+
+// ─────────────────────────────────────────────
+// CONNECTIONS
+// ─────────────────────────────────────────────
+const connections = [
+  // Wispbyte → Déclencheurs
+  { from: 'wispbyte', to: 'cron_9h',      color: '#4b5563', dash: '4,4' },
+  { from: 'wispbyte', to: 'cron_8h',      color: '#4b5563', dash: '4,4' },
+  { from: 'wispbyte', to: 'cron_4h',      color: '#4b5563', dash: '4,4' },
+  { from: 'wispbyte', to: 'cron_hebdo',   color: '#4b5563', dash: '4,4' },
+  { from: 'wispbyte', to: 'discord_menu', color: '#4b5563', dash: '4,4' },
+
+  // Déclencheurs → APIs
+  { from: 'cron_9h',      to: 'twelvedata', color: '#f97316' },
+  { from: 'cron_9h',      to: 'newsapi',    color: '#f97316' },
+  { from: 'cron_8h',      to: 'newsapi',    color: '#f97316' },
+  { from: 'cron_4h',      to: 'twelvedata', color: '#ef4444' },
+  { from: 'discord_menu', to: 'twelvedata', color: '#22c55e' },
+  { from: 'discord_menu', to: 'newsapi',    color: '#22c55e' },
+  { from: 'discord_menu', to: 'yahoo',      color: '#22c55e' },
+
+  // APIs → IA
+  { from: 'twelvedata', to: 'anthropic', color: '#3b82f6' },
+  { from: 'newsapi',    to: 'anthropic', color: '#3b82f6' },
+
+  // IA + APIs → Canaux
+  { from: 'anthropic',    to: 'ch_analyse', color: '#a855f7' },
+  { from: 'twelvedata',   to: 'ch_analyse', color: '#3b82f6' },
+  { from: 'anthropic',    to: 'ch_news',    color: '#a855f7' },
+  { from: 'newsapi',      to: 'ch_news',    color: '#3b82f6' },
+  { from: 'cron_4h',      to: 'ch_signals', color: '#ef4444' },
+  { from: 'discord_menu', to: 'ch_signals', color: '#22c55e' },
+  { from: 'cron_9h',      to: 'ch_signals', color: '#f97316' },
+  { from: 'cron_hebdo',   to: 'ch_analyse', color: '#eab308' },
+
+  // Dashboard
+  { from: 'yahoo',       to: 'dashboard',  color: '#06b6d4' },
+  { from: 'ch_signals',  to: 'dashboard',  color: '#22c55e', dash: '6,3' },
+];
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+const world = document.getElementById('world');
+const svgEl = document.getElementById('svg-layer');
+const nodeEls = {};
+const nodePositions = {}; // live positions
+
+let scale = 0.75, tx = 40, ty = 40;
+let isPanning = false, panStart = {}, panTxStart = 0, panTyStart = 0;
+let draggingNode = null, dragOffsetX = 0, dragOffsetY = 0;
+let activeNodeId = null;
+
+// Init positions
+nodes.forEach(n => { nodePositions[n.id] = { x: n.x, y: n.y }; });
+
+// ─────────────────────────────────────────────
+// CREATE NODES
+// ─────────────────────────────────────────────
+nodes.forEach(n => {
+  const el = document.createElement('div');
+  el.className = 'node';
+  el.id = 'node-' + n.id;
+  el.style.left = n.x + 'px';
+  el.style.top = n.y + 'px';
+  el.style.setProperty('--accent-color', n.color);
+  el.innerHTML = `
+    <div class="node-header">
+      <div class="node-icon" style="background:${n.color}20;border:1px solid ${n.color}40">${n.icon}</div>
+      <div class="node-title">${n.title}</div>
+    </div>
+    <div class="node-sub">${n.sub}</div>
+    <div class="port port-in"></div>
+    <div class="port port-out"></div>
+  `;
+
+  // Click to open panel
+  el.addEventListener('click', e => {
+    if (Math.abs(e.clientX - dragStartClient.x) < 4 && Math.abs(e.clientY - dragStartClient.y) < 4) {
+      openPanel(n);
+    }
+  });
+
+  // Drag
+  el.addEventListener('mousedown', e => {
+    e.stopPropagation();
+    draggingNode = n.id;
+    dragStartClient = { x: e.clientX, y: e.clientY };
+    const pos = nodePositions[n.id];
+    dragOffsetX = e.clientX / scale - pos.x;
+    dragOffsetY = e.clientY / scale - pos.y;
+    el.classList.add('dragging');
+    document.body.style.cursor = 'grabbing';
+  });
+
+  world.appendChild(el);
+  nodeEls[n.id] = el;
+});
+
+// ─────────────────────────────────────────────
+// SVG CONNECTIONS
+// ─────────────────────────────────────────────
+const NODE_W = 190, NODE_H = 76;
+
+function getPort(id, side) {
+  const p = nodePositions[id];
+  if (!p) return { x: 0, y: 0 };
+  return side === 'out'
+    ? { x: p.x + NODE_W, y: p.y + NODE_H / 2 }
+    : { x: p.x,          y: p.y + NODE_H / 2 };
+}
+
+function redrawConnections() {
+  svgEl.innerHTML = '';
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+
+  connections.forEach((c, i) => {
+    const from = getPort(c.from, 'out');
+    const to   = getPort(c.to,   'in');
+    const dx   = Math.max(60, Math.abs(to.x - from.x) * 0.5);
+
+    const pathId = `path-${i}`;
+    const d = `M ${from.x} ${from.y} C ${from.x + dx} ${from.y}, ${to.x - dx} ${to.y}, ${to.x} ${to.y}`;
+
+    // Main line
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('id', pathId);
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', c.color);
+    path.setAttribute('stroke-width', '1.5');
+    path.setAttribute('stroke-opacity', '0.3');
+    if (c.dash) path.setAttribute('stroke-dasharray', c.dash);
+    svgEl.appendChild(path);
+
+    // Animated dot
+    if (!c.dash) {
+      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.setAttribute('r', '2.5');
+      dot.setAttribute('fill', c.color);
+      dot.setAttribute('opacity', '0.8');
+      const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animateMotion');
+      anim.setAttribute('dur', (1.5 + (i % 5) * 0.7) + 's');
+      anim.setAttribute('repeatCount', 'indefinite');
+      const mpath = document.createElementNS('http://www.w3.org/2000/svg', 'mpath');
+      mpath.setAttributeNS('http://www.w3.org/1999/xlink', 'href', '#' + pathId);
+      anim.appendChild(mpath);
+      dot.appendChild(anim);
+      svgEl.appendChild(dot);
+    }
+  });
+}
+
+redrawConnections();
+
+// ─────────────────────────────────────────────
+// DRAG LOGIC
+// ─────────────────────────────────────────────
+let dragStartClient = { x: 0, y: 0 };
+
+document.addEventListener('mousemove', e => {
+  if (draggingNode) {
+    const pos = nodePositions[draggingNode];
+    const newX = e.clientX / scale - dragOffsetX;
+    const newY = e.clientY / scale - dragOffsetY;
+    pos.x = newX;
+    pos.y = newY;
+    const el = nodeEls[draggingNode];
+    el.style.left = newX + 'px';
+    el.style.top  = newY + 'px';
+    redrawConnections();
+    return;
+  }
+
+  if (isPanning) {
+    tx = panTxStart + (e.clientX - panStart.x);
+    ty = panTyStart + (e.clientY - panStart.y);
+    applyTransform();
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  if (draggingNode) {
+    nodeEls[draggingNode].classList.remove('dragging');
+    draggingNode = null;
+    document.body.style.cursor = '';
+  }
+  isPanning = false;
+  document.getElementById('canvas').classList.remove('panning');
+});
+
+// ─────────────────────────────────────────────
+// PAN (canvas background)
+// ─────────────────────────────────────────────
+document.getElementById('canvas').addEventListener('mousedown', e => {
+  if (e.target.closest('.node')) return;
+  isPanning = true;
+  panStart = { x: e.clientX, y: e.clientY };
+  panTxStart = tx; panTyStart = ty;
+  document.getElementById('canvas').classList.add('panning');
+});
+
+// ─────────────────────────────────────────────
+// ZOOM
+// ─────────────────────────────────────────────
+document.getElementById('canvas').addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY > 0 ? 0.92 : 1.08;
+  const rect = document.getElementById('canvas').getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  tx = mx - (mx - tx) * factor;
+  ty = my - (my - ty) * factor;
+  scale = Math.max(0.25, Math.min(2.5, scale * factor));
+  applyTransform();
+}, { passive: false });
+
+function zoomIn()  { scale = Math.min(2.5, scale * 1.15); applyTransform(); }
+function zoomOut() { scale = Math.max(0.25, scale * 0.87); applyTransform(); }
+function resetView() { scale = 0.75; tx = 40; ty = 40; applyTransform(); }
+
+function applyTransform() {
+  world.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+  document.getElementById('zoom-label').textContent = Math.round(scale * 100) + '%';
+}
+applyTransform();
+
+// ─────────────────────────────────────────────
+// PANEL
+// ─────────────────────────────────────────────
+function openPanel(n) {
+  if (activeNodeId) nodeEls[activeNodeId]?.classList.remove('active');
+  activeNodeId = n.id;
+  nodeEls[n.id].classList.add('active');
+
+  document.getElementById('panel-icon').style.background = n.color + '25';
+  document.getElementById('panel-icon').style.border = '1px solid ' + n.color + '50';
+  document.getElementById('panel-icon').textContent = n.icon;
+  document.getElementById('panel-title').textContent = n.title;
+  document.getElementById('panel-type').textContent = n.type;
+
+  let html = `<div class="panel-section"><div class="panel-section-title">Description</div><div class="panel-desc">${n.desc}</div></div>`;
+
+  if (n.tags?.length) {
+    html += `<div class="panel-section"><div class="panel-section-title">Tags</div><div>${n.tags.map(t => `<span class="panel-tag ${t.c}">${t.l}</span>`).join('')}</div></div>`;
+  }
+
+  if (n.fields?.length) {
+    html += `<div class="panel-section"><div class="panel-section-title">Configuration</div>`;
+    n.fields.forEach(f => {
+      html += `<div class="panel-field"><div class="panel-field-label">${f.label}</div><div class="panel-field-value ${f.hi ? 'hi' : ''}">${f.value}</div></div>`;
+    });
+    html += `</div>`;
+  }
+
+  if (n.flow?.length) {
+    html += `<div class="panel-section"><div class="panel-section-title">Flux d'exécution</div><div class="panel-flow">`;
+    n.flow.forEach((s, i) => {
+      html += `<div class="panel-flow-step"><div class="panel-flow-num">${i + 1}</div>${s}</div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  const inc = connections.filter(c => c.to === n.id);
+  const out = connections.filter(c => c.from === n.id);
+  if (inc.length || out.length) {
+    html += `<div class="panel-section"><div class="panel-section-title">Connexions</div>`;
+    if (inc.length) html += `<div class="panel-field"><div class="panel-field-label">← Entrées (${inc.length})</div><div class="panel-field-value">${inc.map(c => { const s = nodes.find(x => x.id === c.from); return s ? s.icon + ' ' + s.title : c.from; }).join('<br>')}</div></div>`;
+    if (out.length) html += `<div class="panel-field"><div class="panel-field-label">→ Sorties (${out.length})</div><div class="panel-field-value">${out.map(c => { const d = nodes.find(x => x.id === c.to); return d ? d.icon + ' ' + d.title : c.to; }).join('<br>')}</div></div>`;
+    html += `</div>`;
+  }
+
+  document.getElementById('panel-body').innerHTML = html;
+  document.getElementById('panel').classList.add('open');
+}
+
+function closePanel() {
+  document.getElementById('panel').classList.remove('open');
+  if (activeNodeId) nodeEls[activeNodeId]?.classList.remove('active');
+  activeNodeId = null;
+}
+</script>
+</body>
+</html>
