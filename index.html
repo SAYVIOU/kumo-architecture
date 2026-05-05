@@ -15,16 +15,19 @@
   --orange: #f97316; --red: #ef4444; --yellow: #eab308;
   --cyan: #06b6d4;
 }
-body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans', sans-serif; height: 100vh; overflow: hidden; user-select: none; }
-body::before { content: ''; position: fixed; inset: 0; background-image: radial-gradient(circle, #2a2a2a 1px, transparent 1px); background-size: 28px 28px; opacity: 0.4; pointer-events: none; z-index: 0; }
+body { background: #080810; color: var(--text); font-family: 'IBM Plex Sans', sans-serif; height: 100vh; overflow: hidden; user-select: none; }
+body::before { content: ''; position: fixed; inset: 0; background-image: radial-gradient(circle, #2a2a2a 1px, transparent 1px); background-size: 28px 28px; opacity: 0.35; pointer-events: none; z-index: 0; }
+body::after { content: ''; position: fixed; inset: 0; background: radial-gradient(ellipse at 22% 15%, #1a1540 0%, transparent 52%), radial-gradient(ellipse at 78% 88%, #0a1f1a 0%, transparent 50%); pointer-events: none; z-index: 0; }
 
 /* Topbar */
-.topbar { position: fixed; top: 0; left: 0; right: 0; height: 48px; background: var(--bg2); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; z-index: 100; }
+.topbar { position: fixed; top: 0; left: 0; right: 0; height: 48px; background: rgba(10, 10, 16, 0.75); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; z-index: 100; }
 .topbar-logo { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
 .topbar-badge { font-size: 9px; padding: 2px 8px; border-radius: 3px; background: #1a1a1a; border: 1px solid var(--border2); color: var(--muted); letter-spacing: 1px; text-transform: uppercase; font-family: 'IBM Plex Mono', monospace; }
 .topbar-right { display: flex; align-items: center; gap: 20px; font-size: 10px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
 .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 5px; animation: blink 2s ease-in-out infinite; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+@keyframes nodeEnter { from { opacity:0; transform: translateY(12px) scale(0.96); } to { opacity:1; transform: translateY(0) scale(1); } }
+@keyframes portPulse { 0%,100% { transform: translateY(-50%) scale(1); box-shadow: 0 0 0 0 var(--accent-color, #555); } 50% { transform: translateY(-50%) scale(1.7); box-shadow: 0 0 6px 2px var(--accent-color, #555); } }
 
 /* Canvas */
 #canvas { position: fixed; top: 48px; left: 0; right: 0; bottom: 0; z-index: 1; overflow: hidden; cursor: grab; }
@@ -37,10 +40,10 @@ body::before { content: ''; position: fixed; inset: 0; background-image: radial-
 .group-bg { position: absolute; border-radius: 14px; border: 1px dashed #1e1e1e; background: rgba(255,255,255,0.005); pointer-events: none; z-index: 2; }
 
 /* Nodes */
-.node { position: absolute; width: 190px; background: var(--bg2); border: 1px solid var(--border2); border-radius: 8px; cursor: grab; z-index: 10; transition: border-color 0.15s, box-shadow 0.15s; }
-.node:hover { border-color: var(--accent-color, #444); box-shadow: 0 0 0 1px var(--accent-color, #444), 0 8px 24px rgba(0,0,0,.5); }
-.node.active { border-color: var(--accent-color, #444) !important; box-shadow: 0 0 0 2px var(--accent-color, #444), 0 12px 32px rgba(0,0,0,.6) !important; }
-.node.dragging { cursor: grabbing; z-index: 100; box-shadow: 0 20px 60px rgba(0,0,0,.8); transform: scale(1.02); }
+.node { position: absolute; width: 190px; background: var(--bg2); border: 1px solid var(--border2); border-radius: 8px; cursor: grab; z-index: 10; transition: border-color 0.2s, box-shadow 0.2s; animation: nodeEnter 0.5s cubic-bezier(0.16,1,0.3,1) both; }
+.node:hover { border-color: var(--accent-color, #444); box-shadow: 0 0 0 1px var(--accent-color, #444), 0 0 22px -4px var(--accent-color, #444), 0 8px 24px rgba(0,0,0,.5); }
+.node.active { border-color: var(--accent-color, #444) !important; box-shadow: 0 0 0 2px var(--accent-color, #444), 0 0 32px -2px var(--accent-color, #444), 0 12px 40px rgba(0,0,0,.6) !important; }
+.node.dragging { cursor: grabbing; z-index: 100; box-shadow: 0 0 0 1px var(--accent-color, #444), 0 0 28px -2px var(--accent-color, #444), 0 20px 60px rgba(0,0,0,.8); transform: scale(1.02); }
 .node-header { padding: 10px 12px 8px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
 .node-icon { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
 .node-title { font-size: 11px; font-weight: 600; color: var(--text); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -49,6 +52,7 @@ body::before { content: ''; position: fixed; inset: 0; background-image: radial-
 .port-out { right: -5px; }
 .port-in { left: -5px; }
 .node:hover .port { border-color: var(--accent-color, #555); background: var(--accent-color, #555); }
+.node.active .port { border-color: var(--accent-color, #555) !important; background: var(--accent-color, #555) !important; animation: portPulse 1.4s ease-in-out infinite; }
 
 /* Panel */
 #panel { position: fixed; right: -390px; top: 48px; bottom: 0; width: 370px; background: var(--bg2); border-left: 1px solid var(--border); z-index: 50; transition: right .3s cubic-bezier(.4,0,.2,1); display: flex; flex-direction: column; }
@@ -475,10 +479,11 @@ nodes.forEach(n => { nodePositions[n.id] = { x: n.x, y: n.y }; });
 // ─────────────────────────────────────────────
 // CREATE NODES
 // ─────────────────────────────────────────────
-nodes.forEach(n => {
+nodes.forEach((n, index) => {
   const el = document.createElement('div');
   el.className = 'node';
   el.id = 'node-' + n.id;
+  el.style.animationDelay = (index * 0.07) + 's';
   el.style.left = n.x + 'px';
   el.style.top = n.y + 'px';
   el.style.setProperty('--accent-color', n.color);
